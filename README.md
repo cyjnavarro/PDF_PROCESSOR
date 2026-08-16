@@ -1,4 +1,4 @@
-# PDF Merger (C++ / MinGW)
+# PDF_PROCESSOR (C++ / MinGW)
 
 This project replaces the original Python-only implementation with a C++ codebase that can be built using MinGW and CMake.
 
@@ -21,4 +21,5 @@ Then run:
 
 - The app validates that each input file exists and looks like a PDF.
 - It merges each file sequentially into a single output PDF.
-- This is a lightweight C++ foundation for the original PDF Merger workflow and is ready to expand with a GUI layer or a dedicated PDF library later.
+- This is a lightweight C++ foundation for the original PDF_PROCESSOR workflow and is ready to expand with a GUI layer or a dedicated PDF library later.
+

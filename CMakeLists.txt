@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(PDFMerger LANGUAGES CXX)
+project(PDF_PROCESSOR LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(PDFMerger WIN32
+add_executable(PDF_PROCESSOR WIN32
     src/main.cpp
     src/MainWindow.cpp
     src/pdf_merger.cpp
@@ -23,4 +23,5 @@ endif()
 
 target_link_libraries(PDFMerger PRIVATE comdlg32 shell32 user32 gdi32 comctl32)
 
-set_target_properties(PDFMerger PROPERTIES OUTPUT_NAME "PDFMerger")
+set_target_properties(PDF_PROCESSOR PROPERTIES OUTPUT_NAME "PDF_PROCESSOR")
+

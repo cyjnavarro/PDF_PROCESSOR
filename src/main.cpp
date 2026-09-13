@@ -1,12 +1,11 @@
 #include "MainWindow.h"
+#include <QApplication>
 
-#include <windows.h>
-
-int APIENTRY wWinMain(HINSTANCE hInstance,
-                     HINSTANCE,
-                     PWSTR,
-                     int nCmdShow) {
-    InitCommonControls();
-    MainWindow app;
-    return app.run(hInstance, nCmdShow);
+int main(int argc, char* argv[]) {
+    QApplication app(argc, argv);
+    
+    MainWindow window;
+    window.show();
+    
+    return app.exec();
 }

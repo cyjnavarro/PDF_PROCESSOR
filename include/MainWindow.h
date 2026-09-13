@@ -1,39 +1,72 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <windows.h>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QListWidget>
+#include <QLabel>
+#include <QStackedWidget>
+#include <memory>
 
-class MainWindow {
+class FileCollection;
+class PdfProcessor;
+class QWidget;
+
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+
 public:
-    MainWindow();
-    int run(HINSTANCE instance, int nCmdShow);
+    explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
+
+protected:
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
+private slots:
+    void onAddPdfFiles();
+    void onClearFiles();
+    void onMergeFiles();
+    void onMoveUp();
+    void onMoveDown();
+    void onOpenHome();
+    void onOpenMergePage();
+    void onConvertImagesToPdf();
+    void onConvertDocumentsToPdf();
+    void onConvertExcelToPdf();
+    void onPrintPdf();
 
 private:
-    static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-
-    void createControls();
-    void addPdfFiles();
-    void clearFiles();
-    void mergeFiles();
-    void moveSelectedUp();
-    void moveSelectedDown();
-    void handleDroppedFiles(HDROP dropHandle);
+    void setupUI();
+    void setupHomePage();
+    void setupMergePage();
+    void setHomeButtonStyle(QPushButton* button, const QString& title, const QString& subtitle);
     void updateFileList();
-    void setStatus(const std::wstring& status);
-    void applySelectionState();
+    void updateButtonState();
+    void setStatus(const QString& message);
+    void setupConnections();
+    void addFilesToCollection(const QStringList& files);
+    bool exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath);
+    void launchDocumentForPrint(const QString& filePath);
 
-    static std::wstring toWide(const std::string& value);
-    static std::string toUtf8(const std::wstring& value);
+    // UI Widgets
+    QStackedWidget* stackedWidget_;
+    QWidget* homePage_;
+    QWidget* mergePage_;
+    QListWidget* fileList_;
+    QLabel* statusLabel_;
+    QPushButton* addButton_;
+    QPushButton* clearButton_;
+    QPushButton* mergeButton_;
+    QPushButton* upButton_;
+    QPushButton* downButton_;
+    QPushButton* homeButton_;
+    QPushButton* mergeHomeButton_;
+    QPushButton* imagesToPdfButton_;
+    QPushButton* documentsToPdfButton_;
+    QPushButton* excelToPdfButton_;
+    QPushButton* printPdfButton_;
 
-    HINSTANCE instance_ = nullptr;
-    HWND hwnd_ = nullptr;
-    HWND statusLabel_ = nullptr;
-    HWND fileList_ = nullptr;
-    HWND addButton_ = nullptr;
-    HWND clearButton_ = nullptr;
-    HWND mergeButton_ = nullptr;
-    HWND upButton_ = nullptr;
-    HWND downButton_ = nullptr;
-    std::vector<std::wstring> pdfFiles_;
+    // Business logic
+    std::unique_ptr<FileCollection> fileCollection_;
+    std::unique_ptr<PdfProcessor> pdfProcessor_;
 };

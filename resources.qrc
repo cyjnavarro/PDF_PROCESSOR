@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="PDFW.ico">ICON/PDFW.ico</file>
+    </qresource>
+</RCC>

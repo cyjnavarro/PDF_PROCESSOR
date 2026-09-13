@@ -5,6 +5,7 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QListWidgetItem>
 #include <QLabel>
 #include <QPushButton>
 #include <QListWidget>
@@ -17,12 +18,22 @@
 #include <QMimeData>
 #include <QUrl>
 #include <QGridLayout>
-#include <QDesktopServices>
 #include <QPrinter>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPainter>
 #include <QImage>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFileInfo>
+#include <QSpinBox>
+#include <QLineEdit>
+#include <QRegularExpression>
+#include <QPdfDocument>
+#include <QPdfPageNavigator>
+#include <QPdfView>
+#include <QNativeGestureEvent>
+#include <QWheelEvent>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
@@ -39,9 +50,7 @@ MainWindow::MainWindow(QWidget* parent)
       homeButton_(nullptr),
       mergeHomeButton_(nullptr),
       imagesToPdfButton_(nullptr),
-      documentsToPdfButton_(nullptr),
-      excelToPdfButton_(nullptr),
-      printPdfButton_(nullptr),
+    splitPdfButton_(nullptr),
       fileCollection_(std::make_unique<FileCollection>()),
       pdfProcessor_(std::make_unique<PdfProcessor>()) {
     setWindowTitle("PDF Workspace");
@@ -52,6 +61,37 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() = default;
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    auto* pdfView = qobject_cast<QPdfView*>(watched);
+    if (pdfView == nullptr) {
+        return QMainWindow::eventFilter(watched, event);
+    }
+
+    if (event->type() == QEvent::Wheel) {
+        auto* wheelEvent = static_cast<QWheelEvent*>(event);
+        if (wheelEvent->modifiers().testFlag(Qt::ControlModifier)) {
+            pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
+            const qreal zoomDelta = wheelEvent->angleDelta().y() > 0 ? 0.1 : -0.1;
+            pdfView->setZoomFactor(qBound(0.25, pdfView->zoomFactor() + zoomDelta, 4.0));
+            return true;
+        }
+    }
+
+    if (event->type() == QEvent::NativeGesture) {
+        auto* gestureEvent = static_cast<QNativeGestureEvent*>(event);
+        if (gestureEvent->gestureType() == Qt::ZoomNativeGesture) {
+            pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
+            pdfView->setZoomFactor(qBound(
+                0.25,
+                pdfView->zoomFactor() + static_cast<qreal>(gestureEvent->value()),
+                4.0));
+            return true;
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls()) {
@@ -91,9 +131,51 @@ void MainWindow::setupUI() {
             color: #c9d1d9;
             border: 1px solid #30363d;
             border-radius: 6px;
+            padding: 6px;
+            outline: none;
         }
-        QListWidget::item:hover { background-color: #21262d; }
-        QListWidget::item:selected { background-color: #1f6feb; }
+        QListWidget::item {
+            background-color: #1b222c;
+            border: 1px solid #27313d;
+            border-radius: 7px;
+            margin: 3px 0;
+        }
+        QListWidget::item:hover { background-color: #222d3a; }
+        QListWidget::item:selected {
+            background-color: #243b53;
+            border: 1px solid #3b82f6;
+        }
+        QWidget#fileRow { background-color: transparent; }
+        QLabel#fileBadge {
+            background-color: #b42318;
+            color: #ffffff;
+            border-radius: 4px;
+            padding: 4px 5px;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        QLabel#fileName {
+            color: #e5e7eb;
+            font-size: 11px;
+        }
+        QPushButton#removeFileButton {
+            background-color: transparent;
+            color: #9ca3af;
+            border: 1px solid transparent;
+            border-radius: 14px;
+            padding: 0;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        QPushButton#removeFileButton:hover {
+            background-color: #3b1f2b;
+            color: #fca5a5;
+            border: 1px solid #7f1d1d;
+        }
+        QPushButton#removeFileButton:pressed {
+            background-color: #7f1d1d;
+            color: #ffffff;
+        }
         QPushButton {
             background-color: #21262d;
             color: #c9d1d9;
@@ -148,18 +230,12 @@ void MainWindow::setupHomePage() {
     setHomeButtonStyle(mergeHomeButton_, "Merge PDFs", "Combine multiple PDFs into one file");
     imagesToPdfButton_ = new QPushButton(homePage_);
     setHomeButtonStyle(imagesToPdfButton_, "Convert Images to PDF", "Turn collections of images into a PDF");
-    documentsToPdfButton_ = new QPushButton(homePage_);
-    setHomeButtonStyle(documentsToPdfButton_, "Convert Docs to PDF", "Open doc workflows and export as PDF");
-    excelToPdfButton_ = new QPushButton(homePage_);
-    setHomeButtonStyle(excelToPdfButton_, "Convert Excel to PDF", "Prepare spreadsheets for PDF export");
-    printPdfButton_ = new QPushButton(homePage_);
-    setHomeButtonStyle(printPdfButton_, "Print PDF", "Open a selected PDF in its default viewer");
+    splitPdfButton_ = new QPushButton(homePage_);
+    setHomeButtonStyle(splitPdfButton_, "Split PDF", "Create separate PDFs from page ranges");
 
     toolsLayout->addWidget(mergeHomeButton_, 0, 0);
     toolsLayout->addWidget(imagesToPdfButton_, 0, 1);
-    toolsLayout->addWidget(documentsToPdfButton_, 1, 0);
-    toolsLayout->addWidget(excelToPdfButton_, 1, 1);
-    toolsLayout->addWidget(printPdfButton_, 2, 0, 1, 2);
+    toolsLayout->addWidget(splitPdfButton_, 1, 0, 1, 2);
     toolsLayout->setColumnStretch(0, 1);
     toolsLayout->setColumnStretch(1, 1);
 
@@ -216,6 +292,8 @@ void MainWindow::setupMergePage() {
     fileList_ = new QListWidget(mergePage_);
     fileList_->setMinimumHeight(220);
     fileList_->setFont(normalFont);
+    fileList_->setSpacing(2);
+    fileList_->setUniformItemSizes(true);
     mainLayout->addWidget(fileList_);
 
     statusLabel_ = new QLabel("Ready", mergePage_);
@@ -254,9 +332,7 @@ void MainWindow::setupConnections() {
     connect(homeButton_, &QPushButton::clicked, this, &MainWindow::onOpenHome);
     connect(mergeHomeButton_, &QPushButton::clicked, this, &MainWindow::onOpenMergePage);
     connect(imagesToPdfButton_, &QPushButton::clicked, this, &MainWindow::onConvertImagesToPdf);
-    connect(documentsToPdfButton_, &QPushButton::clicked, this, &MainWindow::onConvertDocumentsToPdf);
-    connect(excelToPdfButton_, &QPushButton::clicked, this, &MainWindow::onConvertExcelToPdf);
-    connect(printPdfButton_, &QPushButton::clicked, this, &MainWindow::onPrintPdf);
+    connect(splitPdfButton_, &QPushButton::clicked, this, &MainWindow::onSplitPdf);
     connect(addButton_, &QPushButton::clicked, this, &MainWindow::onAddPdfFiles);
     connect(clearButton_, &QPushButton::clicked, this, &MainWindow::onClearFiles);
     connect(mergeButton_, &QPushButton::clicked, this, &MainWindow::onMergeFiles);
@@ -318,14 +394,6 @@ bool MainWindow::exportImagesToPdf(const QStringList& imageFiles, const QString&
     return true;
 }
 
-void MainWindow::launchDocumentForPrint(const QString& filePath) {
-    const QUrl url = QUrl::fromLocalFile(filePath);
-    if (!QDesktopServices::openUrl(url)) {
-        QMessageBox::warning(this, "Open Failed",
-            "The file could not be opened with the default application. Please open it manually and use Print to PDF.");
-    }
-}
-
 void MainWindow::onOpenHome() {
     stackedWidget_->setCurrentWidget(homePage_);
     setStatus("Home");
@@ -363,48 +431,186 @@ void MainWindow::onConvertImagesToPdf() {
     setStatus("Image conversion complete.");
 }
 
-void MainWindow::onConvertDocumentsToPdf() {
-    const QStringList files = QFileDialog::getOpenFileNames(
-        this, "Select document files", "", "Documents (*.doc *.docx *.odt *.rtf *.txt *.pdf);;All Files (*)");
-
-    if (files.isEmpty()) {
-        return;
-    }
-
-    const QString selectedFile = files.first();
-    QMessageBox::information(this, "Document Workflow",
-        "Open the selected document in your default app and use Save as PDF or Print to PDF.");
-    launchDocumentForPrint(selectedFile);
-    setStatus("Document workflow started.");
-}
-
-void MainWindow::onConvertExcelToPdf() {
-    const QStringList files = QFileDialog::getOpenFileNames(
-        this, "Select Excel files", "", "Excel Files (*.xlsx *.xls *.csv);;All Files (*)");
-
-    if (files.isEmpty()) {
-        return;
-    }
-
-    const QString selectedFile = files.first();
-    QMessageBox::information(this, "Excel Workflow",
-        "Open the selected spreadsheet in Excel or LibreOffice and export or print it to PDF.");
-    launchDocumentForPrint(selectedFile);
-    setStatus("Excel workflow started.");
-}
-
-void MainWindow::onPrintPdf() {
+void MainWindow::onSplitPdf() {
     const QString filePath = QFileDialog::getOpenFileName(
-        this, "Select PDF to print", "", "PDF Files (*.pdf);;All Files (*)");
+        this, "Select PDF to split", "", "PDF Files (*.pdf);;All Files (*)");
 
     if (filePath.isEmpty()) {
         return;
     }
 
-    QMessageBox::information(this, "Print PDF",
-        "The selected PDF will be opened in the default application so you can print it from there.");
-    launchDocumentForPrint(filePath);
-    setStatus("Opened PDF for printing.");
+    QPdfDocument document;
+    if (document.load(filePath) != QPdfDocument::Error::None || document.pageCount() == 0) {
+        QMessageBox::critical(this, "Open Failed", "The selected PDF could not be opened.");
+        return;
+    }
+
+    QDialog viewerDialog(this);
+    viewerDialog.setWindowTitle("View and Split PDF");
+    viewerDialog.resize(900, 720);
+
+    auto* dialogLayout = new QVBoxLayout(&viewerDialog);
+    auto* titleLabel = new QLabel(
+        QString("%1  |  %2 pages").arg(QFileInfo(filePath).fileName()).arg(document.pageCount()),
+        &viewerDialog);
+    QFont titleFont = titleLabel->font();
+    titleFont.setBold(true);
+    titleLabel->setFont(titleFont);
+    dialogLayout->addWidget(titleLabel);
+
+    auto* pdfView = new QPdfView(&viewerDialog);
+    pdfView->setDocument(&document);
+    pdfView->setPageMode(QPdfView::PageMode::SinglePage);
+    pdfView->setZoomMode(QPdfView::ZoomMode::FitInView);
+    pdfView->setPageSpacing(12);
+    pdfView->installEventFilter(this);
+    dialogLayout->addWidget(pdfView, 1);
+
+    auto* zoomLayout = new QHBoxLayout();
+    auto* zoomOutButton = new QPushButton("-", &viewerDialog);
+    auto* zoomInButton = new QPushButton("+", &viewerDialog);
+    auto* fitButton = new QPushButton("Fit", &viewerDialog);
+    auto* zoomLabel = new QLabel("Fit to view", &viewerDialog);
+    zoomOutButton->setFixedWidth(36);
+    zoomInButton->setFixedWidth(36);
+    fitButton->setFixedWidth(55);
+    zoomLayout->addWidget(zoomOutButton);
+    zoomLayout->addWidget(zoomInButton);
+    zoomLayout->addWidget(fitButton);
+    zoomLayout->addWidget(zoomLabel);
+    zoomLayout->addStretch();
+    dialogLayout->addLayout(zoomLayout);
+
+    auto* navigationLayout = new QHBoxLayout();
+    auto* previousButton = new QPushButton("Previous", &viewerDialog);
+    auto* nextButton = new QPushButton("Next", &viewerDialog);
+    auto* pageSpinBox = new QSpinBox(&viewerDialog);
+    pageSpinBox->setRange(1, document.pageCount());
+    pageSpinBox->setValue(1);
+    pageSpinBox->setFixedWidth(70);
+    auto* pageLabel = new QLabel(QString("of %1").arg(document.pageCount()), &viewerDialog);
+    navigationLayout->addWidget(previousButton);
+    navigationLayout->addWidget(nextButton);
+    navigationLayout->addStretch();
+    navigationLayout->addWidget(new QLabel("Page", &viewerDialog));
+    navigationLayout->addWidget(pageSpinBox);
+    navigationLayout->addWidget(pageLabel);
+    dialogLayout->addLayout(navigationLayout);
+
+    auto* nameLabel = new QLabel("Output file name:", &viewerDialog);
+    dialogLayout->addWidget(nameLabel);
+    auto* nameEdit = new QLineEdit(QFileInfo(filePath).completeBaseName(), &viewerDialog);
+    nameEdit->setPlaceholderText("Example: project-chapter");
+    dialogLayout->addWidget(nameEdit);
+
+    auto* rangeLabel = new QLabel("Split ranges (example: 1-3, 4-6):", &viewerDialog);
+    dialogLayout->addWidget(rangeLabel);
+    auto* rangeEdit = new QLineEdit("1-" + QString::number(document.pageCount()), &viewerDialog);
+    rangeEdit->setPlaceholderText("1-3, 4-6");
+    dialogLayout->addWidget(rangeEdit);
+
+    auto* dialogButtons = new QDialogButtonBox(&viewerDialog);
+    auto* cancelButton = dialogButtons->addButton(QDialogButtonBox::Cancel);
+    auto* splitButton = dialogButtons->addButton("Split PDF", QDialogButtonBox::AcceptRole);
+    dialogLayout->addWidget(dialogButtons);
+
+    QObject::connect(previousButton, &QPushButton::clicked, [&]() {
+        pageSpinBox->setValue(pageSpinBox->value() - 1);
+    });
+    QObject::connect(nextButton, &QPushButton::clicked, [&]() {
+        pageSpinBox->setValue(pageSpinBox->value() + 1);
+    });
+    QObject::connect(zoomOutButton, &QPushButton::clicked, [&]() {
+        pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
+        pdfView->setZoomFactor(qMax(0.25, pdfView->zoomFactor() - 0.15));
+        zoomLabel->setText(QString("%1%").arg(qRound(pdfView->zoomFactor() * 100)));
+    });
+    QObject::connect(zoomInButton, &QPushButton::clicked, [&]() {
+        pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
+        pdfView->setZoomFactor(qMin(4.0, pdfView->zoomFactor() + 0.15));
+        zoomLabel->setText(QString("%1%").arg(qRound(pdfView->zoomFactor() * 100)));
+    });
+    QObject::connect(fitButton, &QPushButton::clicked, [&]() {
+        pdfView->setZoomMode(QPdfView::ZoomMode::FitInView);
+        zoomLabel->setText("Fit to view");
+    });
+    QObject::connect(pageSpinBox, &QSpinBox::valueChanged, [&](int page) {
+        pdfView->pageNavigator()->jump(page - 1, QPointF(0, 0));
+    });
+    QObject::connect(pdfView->pageNavigator(), &QPdfPageNavigator::currentPageChanged,
+        [&](int page) {
+            pageSpinBox->setValue(page + 1);
+        });
+    QObject::connect(cancelButton, &QPushButton::clicked, &viewerDialog, &QDialog::reject);
+
+    QString rangeText;
+    QString outputBaseName;
+    QString outputDirectory;
+    QObject::connect(splitButton, &QPushButton::clicked, [&]() {
+        const QString candidateName = nameEdit->text().trimmed();
+        if (candidateName.isEmpty() || candidateName == "." || candidateName == ".." ||
+            candidateName.contains(QRegularExpression(R"([\\/:*?"<>|])"))) {
+            QMessageBox::warning(&viewerDialog, "Invalid File Name",
+                "Enter a file name without path separators or Windows-invalid characters.");
+            return;
+        }
+
+        const QString selectedDirectory = QFileDialog::getExistingDirectory(
+            &viewerDialog, "Choose output folder for split PDFs");
+        if (!selectedDirectory.isEmpty()) {
+            rangeText = rangeEdit->text();
+            outputBaseName = candidateName;
+            outputDirectory = selectedDirectory;
+            viewerDialog.accept();
+        }
+    });
+
+    if (viewerDialog.exec() != QDialog::Accepted || rangeText.trimmed().isEmpty()) {
+        return;
+    }
+
+    std::vector<std::pair<size_t, size_t>> pageRanges;
+    for (const QString& range : rangeText.split(',', Qt::SkipEmptyParts)) {
+        const QStringList bounds = range.trimmed().split('-', Qt::SkipEmptyParts);
+        bool startOk = false;
+        bool endOk = false;
+        const int startPage = bounds.value(0).trimmed().toInt(&startOk);
+        const int endPage = bounds.size() > 1
+            ? bounds.value(1).trimmed().toInt(&endOk)
+            : startPage;
+
+        if (!startOk || (bounds.size() > 1 && !endOk) || bounds.size() > 2 ||
+            startPage < 1 || endPage < startPage || static_cast<size_t>(endPage) >
+                static_cast<size_t>(document.pageCount())) {
+            QMessageBox::warning(this, "Invalid Page Range",
+                "Use ranges like 1-3, 4-6. Page numbers must be within the PDF.");
+            return;
+        }
+
+        pageRanges.emplace_back(static_cast<size_t>(startPage - 1), static_cast<size_t>(endPage - 1));
+    }
+
+    setStatus("Splitting PDF...");
+    const bool success = pdfProcessor_->splitFile(
+        StringConverter::toUtf8(filePath.toStdWString()),
+        pageRanges,
+        StringConverter::toUtf8(outputDirectory.toStdWString()),
+        StringConverter::toUtf8(outputBaseName.toStdWString()),
+        [this](size_t current, size_t total, const std::string& fileName) {
+            setStatus(QString("Creating part %1/%2: %3")
+                .arg(current).arg(total).arg(QString::fromStdString(fileName)));
+            QApplication::processEvents();
+        });
+
+    if (!success) {
+        QMessageBox::critical(this, "Split Failed", "The PDF could not be split.");
+        setStatus("PDF split failed.");
+        return;
+    }
+
+    QMessageBox::information(this, "Split Complete",
+        QString("Created %1 PDF part(s) in the selected folder.").arg(pageRanges.size()));
+    setStatus("PDF split complete.");
 }
 
 void MainWindow::onAddPdfFiles() {
@@ -482,14 +688,59 @@ void MainWindow::onMoveDown() {
     }
 }
 
+void MainWindow::onRemoveFile() {
+    auto* removeButton = qobject_cast<QPushButton*>(sender());
+    if (removeButton == nullptr) {
+        return;
+    }
+
+    const int index = removeButton->property("fileIndex").toInt();
+    if (index < 0 || index >= static_cast<int>(fileCollection_->getCount())) {
+        return;
+    }
+
+    fileCollection_->remove(static_cast<size_t>(index));
+    updateFileList();
+    setStatus("File removed from merge list.");
+}
+
 void MainWindow::updateFileList() {
     if (fileList_ == nullptr) {
         return;
     }
 
     fileList_->clear();
-    for (const auto& file : fileCollection_->getFiles()) {
-        fileList_->addItem(QString::fromStdString(file.getFilename()));
+    const auto& files = fileCollection_->getFiles();
+    for (int index = 0; index < static_cast<int>(files.size()); ++index) {
+        auto* item = new QListWidgetItem(fileList_);
+        auto* rowWidget = new QWidget(fileList_);
+        rowWidget->setObjectName("fileRow");
+        auto* rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(10, 4, 6, 4);
+        rowLayout->setSpacing(10);
+
+        auto* fileBadge = new QLabel("PDF", rowWidget);
+        fileBadge->setObjectName("fileBadge");
+        fileBadge->setAlignment(Qt::AlignCenter);
+        fileBadge->setFixedSize(34, 24);
+        auto* fileLabel = new QLabel(QString::fromStdString(files.at(index).getFilename()), rowWidget);
+        fileLabel->setObjectName("fileName");
+        fileLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        fileLabel->setToolTip(QString::fromStdString(files.at(index).getPath()));
+        auto* removeButton = new QPushButton("X", rowWidget);
+        removeButton->setObjectName("removeFileButton");
+        removeButton->setFixedSize(28, 28);
+        removeButton->setToolTip("Remove this file");
+        removeButton->setProperty("fileIndex", index);
+
+        rowLayout->addWidget(fileBadge);
+        rowLayout->addWidget(fileLabel);
+        rowLayout->addStretch();
+        rowLayout->addWidget(removeButton);
+        item->setSizeHint(QSize(0, 44));
+        fileList_->setItemWidget(item, rowWidget);
+
+        connect(removeButton, &QPushButton::clicked, this, &MainWindow::onRemoveFile);
     }
     updateButtonState();
 }

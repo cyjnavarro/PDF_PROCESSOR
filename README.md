@@ -1,6 +1,6 @@
 # PDF_PROCESSOR (C++ / MinGW)
 
-This project replaces the original Python-only implementation with a C++ codebase that can be built using MinGW and CMake.
+This project is a Qt 6 desktop PDF workspace built with C++, MinGW, and CMake.
 
 ## Build with MinGW
 
@@ -11,15 +11,23 @@ cmake -S . -B build -G "MinGW Makefiles"
 cmake --build build
 ```
 
+The merge engine uses QPDF. With MSYS2 UCRT64, install it with:
+
+```powershell
+pacman -S mingw-w64-ucrt-x86_64-qpdf
+```
+
 Then run:
 
 ```powershell
-./build/pdf_merger.exe merged.pdf input1.pdf input2.pdf
+./build/PDF_PROCESSOR.exe
 ```
 
 ## Notes
 
 - The app validates that each input file exists and looks like a PDF.
-- It merges each file sequentially into a single output PDF.
-- This is a lightweight C++ foundation for the original PDF_PROCESSOR workflow and is ready to expand with a GUI layer or a dedicated PDF library later.
+- The landing page provides PDF merge, image conversion, and PDF splitting.
+- The splitter opens the PDF in an in-app viewer with page navigation, then accepts ranges such as `1-3, 4-6` and creates one output PDF for each range.
+- The merge screen uses QPDF to copy pages into a structurally valid output PDF.
+- Each selected merge file has an `X` button for removing only that file.
 

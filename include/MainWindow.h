@@ -21,6 +21,7 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private slots:
     void onAddPdfFiles();
@@ -28,12 +29,11 @@ private slots:
     void onMergeFiles();
     void onMoveUp();
     void onMoveDown();
+    void onRemoveFile();
     void onOpenHome();
     void onOpenMergePage();
     void onConvertImagesToPdf();
-    void onConvertDocumentsToPdf();
-    void onConvertExcelToPdf();
-    void onPrintPdf();
+    void onSplitPdf();
 
 private:
     void setupUI();
@@ -46,7 +46,6 @@ private:
     void setupConnections();
     void addFilesToCollection(const QStringList& files);
     bool exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath);
-    void launchDocumentForPrint(const QString& filePath);
 
     // UI Widgets
     QStackedWidget* stackedWidget_;
@@ -62,9 +61,7 @@ private:
     QPushButton* homeButton_;
     QPushButton* mergeHomeButton_;
     QPushButton* imagesToPdfButton_;
-    QPushButton* documentsToPdfButton_;
-    QPushButton* excelToPdfButton_;
-    QPushButton* printPdfButton_;
+    QPushButton* splitPdfButton_;
 
     // Business logic
     std::unique_ptr<FileCollection> fileCollection_;

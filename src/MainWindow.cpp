@@ -23,6 +23,7 @@
 #include <QPageSize>
 #include <QPainter>
 #include <QImage>
+#include <QImageReader>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileInfo>
@@ -352,7 +353,10 @@ void MainWindow::addFilesToCollection(const QStringList& files) {
     updateFileList();
 }
 
-bool MainWindow::exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath) {
+bool MainWindow::exportImagesToPdf(
+    const QStringList& imageFiles,
+    const QString& outputPath,
+    QString& errorMessage) {
     if (imageFiles.isEmpty()) {
         return false;
     }
@@ -370,14 +374,20 @@ bool MainWindow::exportImagesToPdf(const QStringList& imageFiles, const QString&
 
     const QRectF pageRect = printer.pageRect(QPrinter::DevicePixel);
 
-    for (int i = 0; i < imageFiles.size(); ++i) {
-        if (i > 0) {
-            printer.newPage();
+    QStringList skippedImages;
+    int renderedImages = 0;
+    for (const QString& imagePath : imageFiles) {
+        QImageReader reader(imagePath);
+        reader.setAutoTransform(true);
+        QImage image = reader.read();
+        if (image.isNull()) {
+            skippedImages.append(QString("%1 (%2)")
+                .arg(QFileInfo(imagePath).fileName(), reader.errorString()));
+            continue;
         }
 
-        QImage image(imageFiles.at(i));
-        if (image.isNull()) {
-            continue;
+        if (renderedImages > 0) {
+            printer.newPage();
         }
 
         const QImage scaled = image.scaled(pageRect.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -388,9 +398,18 @@ bool MainWindow::exportImagesToPdf(const QStringList& imageFiles, const QString&
             static_cast<double>(scaled.height()));
 
         painter.drawImage(targetRect, scaled);
+        ++renderedImages;
     }
 
     painter.end();
+    if (renderedImages == 0) {
+        errorMessage = "None of the selected files could be decoded as images.";
+        return false;
+    }
+
+    if (!skippedImages.isEmpty()) {
+        errorMessage = "Skipped images that could not be read:\n" + skippedImages.join('\n');
+    }
     return true;
 }
 
@@ -406,7 +425,7 @@ void MainWindow::onOpenMergePage() {
 
 void MainWindow::onConvertImagesToPdf() {
     const QStringList imageFiles = QFileDialog::getOpenFileNames(
-        this, "Select images to convert", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;All Files (*)");
+        this, "Select images to convert", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.ico *.ppm *.pgm *.pbm *.pnm);;All Files (*)");
 
     if (imageFiles.isEmpty()) {
         return;
@@ -420,14 +439,20 @@ void MainWindow::onConvertImagesToPdf() {
     }
 
     setStatus("Converting images to PDF...");
-    const bool success = exportImagesToPdf(imageFiles, outputPath);
+    QString conversionMessage;
+    const bool success = exportImagesToPdf(imageFiles, outputPath, conversionMessage);
     if (!success) {
-        QMessageBox::critical(this, "Conversion Failed", "The images could not be converted to PDF.");
+        QMessageBox::critical(this, "Conversion Failed", conversionMessage);
         setStatus("Image conversion failed.");
         return;
     }
 
-    QMessageBox::information(this, "Success", "Images were converted to PDF successfully.");
+    if (conversionMessage.isEmpty()) {
+        QMessageBox::information(this, "Success", "Images were converted to PDF successfully.");
+    } else {
+        QMessageBox::warning(this, "Conversion Completed with Skips",
+            "Readable images were converted, but some could not be decoded:\n\n" + conversionMessage);
+    }
     setStatus("Image conversion complete.");
 }
 

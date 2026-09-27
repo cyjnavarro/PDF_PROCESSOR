@@ -28,6 +28,7 @@ Then run:
 - The app validates that each input file exists and looks like a PDF.
 - The landing page provides PDF merge, image conversion, and PDF splitting.
 - The splitter opens the PDF in an in-app viewer with page navigation, then accepts ranges such as `1-3, 4-6` and creates one output PDF for each range.
+- Image-to-PDF supports PNG, JPEG, BMP, GIF, ICO, and PNM-family images through Qt's built-in readers and bundled format plugins. Unreadable images are reported instead of silently producing blank pages.
 - The merge screen uses QPDF to copy pages into a structurally valid output PDF.
 - Each selected merge file has an `X` button for removing only that file.
 

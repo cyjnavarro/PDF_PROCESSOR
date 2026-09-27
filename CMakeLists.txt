@@ -17,6 +17,7 @@ find_library(QPDF_LIBRARY NAMES qpdf REQUIRED)
 find_file(QPDF_RUNTIME_LIBRARY NAMES libqpdf30.dll PATHS C:/msys64/ucrt64/bin REQUIRED)
 find_file(QT_PDF_RUNTIME_LIBRARY NAMES Qt6Pdf.dll PATHS C:/msys64/ucrt64/bin REQUIRED)
 find_file(QT_PDF_WIDGETS_RUNTIME_LIBRARY NAMES Qt6PdfWidgets.dll PATHS C:/msys64/ucrt64/bin REQUIRED)
+find_path(QT_IMAGEFORMATS_DIR NAMES qjpeg.dll PATHS C:/msys64/ucrt64/share/qt6/plugins/imageformats REQUIRED)
 
 add_executable(PDF_PROCESSOR WIN32
     src/main.cpp
@@ -62,6 +63,9 @@ add_custom_command(TARGET PDF_PROCESSOR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${QT_PDF_WIDGETS_RUNTIME_LIBRARY}
         $<TARGET_FILE_DIR:PDF_PROCESSOR>
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${QT_IMAGEFORMATS_DIR}
+        $<TARGET_FILE_DIR:PDF_PROCESSOR>/imageformats
 )
 
 set_target_properties(PDF_PROCESSOR PROPERTIES OUTPUT_NAME "PDF_PROCESSOR")

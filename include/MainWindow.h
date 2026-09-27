@@ -45,7 +45,7 @@ private:
     void setStatus(const QString& message);
     void setupConnections();
     void addFilesToCollection(const QStringList& files);
-    bool exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath);
+    bool exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath, QString& errorMessage);
 
     // UI Widgets
     QStackedWidget* stackedWidget_;

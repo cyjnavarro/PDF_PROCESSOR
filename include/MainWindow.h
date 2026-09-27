@@ -36,6 +36,12 @@ private slots:
     void onSplitPdf();
 
 private:
+    enum class ImagePlacementMode {
+        Fit,
+        Fill,
+        Stretch
+    };
+
     void setupUI();
     void setupHomePage();
     void setupMergePage();
@@ -45,7 +51,11 @@ private:
     void setStatus(const QString& message);
     void setupConnections();
     void addFilesToCollection(const QStringList& files);
-    bool exportImagesToPdf(const QStringList& imageFiles, const QString& outputPath, QString& errorMessage);
+    bool exportImagesToPdf(const QStringList& imageFiles,
+                           const QString& outputPath,
+                           bool landscape,
+                           ImagePlacementMode placementMode,
+                           QString& errorMessage);
 
     // UI Widgets
     QStackedWidget* stackedWidget_;

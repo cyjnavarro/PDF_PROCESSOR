@@ -28,6 +28,7 @@
 #include <QDialogButtonBox>
 #include <QFileInfo>
 #include <QSpinBox>
+#include <QComboBox>
 #include <QLineEdit>
 #include <QRegularExpression>
 #include <QPdfDocument>
@@ -356,6 +357,8 @@ void MainWindow::addFilesToCollection(const QStringList& files) {
 bool MainWindow::exportImagesToPdf(
     const QStringList& imageFiles,
     const QString& outputPath,
+    bool landscape,
+    ImagePlacementMode placementMode,
     QString& errorMessage) {
     if (imageFiles.isEmpty()) {
         return false;
@@ -365,14 +368,19 @@ bool MainWindow::exportImagesToPdf(
     printer.setOutputFormat(QPrinter::PdfFormat);
     printer.setOutputFileName(outputPath);
     printer.setPageSize(QPageSize(QPageSize::A4));
-    printer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout::Millimeter);
+    printer.setPageOrientation(landscape ? QPageLayout::Landscape : QPageLayout::Portrait);
+    printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Millimeter);
 
     QPainter painter;
     if (!painter.begin(&printer)) {
         return false;
     }
 
-    const QRectF pageRect = printer.pageRect(QPrinter::DevicePixel);
+    const QRectF fullPageRect = printer.pageRect(QPrinter::DevicePixel);
+    const qreal horizontalInset = fullPageRect.width() * 0.01;
+    const qreal verticalInset = fullPageRect.height() * 0.01;
+    const QRectF pageRect = fullPageRect.adjusted(
+        horizontalInset, verticalInset, -horizontalInset, -verticalInset);
 
     QStringList skippedImages;
     int renderedImages = 0;
@@ -390,14 +398,32 @@ bool MainWindow::exportImagesToPdf(
             printer.newPage();
         }
 
-        const QImage scaled = image.scaled(pageRect.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        const QRectF targetRect(
-            (pageRect.width() - scaled.width()) / 2.0,
-            (pageRect.height() - scaled.height()) / 2.0,
-            static_cast<double>(scaled.width()),
-            static_cast<double>(scaled.height()));
-
-        painter.drawImage(targetRect, scaled);
+        if (placementMode == ImagePlacementMode::Fit) {
+            const QImage scaled = image.scaled(
+                pageRect.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            const QRectF targetRect(
+                pageRect.x() + (pageRect.width() - scaled.width()) / 2.0,
+                pageRect.y() + (pageRect.height() - scaled.height()) / 2.0,
+                static_cast<double>(scaled.width()),
+                static_cast<double>(scaled.height()));
+            painter.drawImage(targetRect, scaled);
+        } else if (placementMode == ImagePlacementMode::Stretch) {
+            painter.drawImage(pageRect, image);
+        } else {
+            QRectF sourceRect(0, 0, image.width(), image.height());
+            const qreal imageAspect = static_cast<qreal>(image.width()) / image.height();
+            const qreal pageAspect = pageRect.width() / pageRect.height();
+            if (imageAspect > pageAspect) {
+                const qreal croppedWidth = image.height() * pageAspect;
+                sourceRect.setX((image.width() - croppedWidth) / 2.0);
+                sourceRect.setWidth(croppedWidth);
+            } else {
+                const qreal croppedHeight = image.width() / pageAspect;
+                sourceRect.setY((image.height() - croppedHeight) / 2.0);
+                sourceRect.setHeight(croppedHeight);
+            }
+            painter.drawImage(pageRect, image, sourceRect);
+        }
         ++renderedImages;
     }
 
@@ -431,6 +457,34 @@ void MainWindow::onConvertImagesToPdf() {
         return;
     }
 
+    QDialog settingsDialog(this);
+    settingsDialog.setWindowTitle("Image PDF Settings");
+    auto* settingsLayout = new QVBoxLayout(&settingsDialog);
+
+    auto* orientationLabel = new QLabel("Paper orientation:", &settingsDialog);
+    auto* orientationCombo = new QComboBox(&settingsDialog);
+    orientationCombo->addItem("Portrait", false);
+    orientationCombo->addItem("Landscape", true);
+
+    auto* placementLabel = new QLabel("Image sizing:", &settingsDialog);
+    auto* placementCombo = new QComboBox(&settingsDialog);
+    placementCombo->addItem("Fit whole image", static_cast<int>(ImagePlacementMode::Fit));
+    placementCombo->addItem("Fill page (crop edges)", static_cast<int>(ImagePlacementMode::Fill));
+    placementCombo->addItem("Stretch to page", static_cast<int>(ImagePlacementMode::Stretch));
+
+    settingsLayout->addWidget(orientationLabel);
+    settingsLayout->addWidget(orientationCombo);
+    settingsLayout->addWidget(placementLabel);
+    settingsLayout->addWidget(placementCombo);
+    auto* settingsButtons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &settingsDialog);
+    settingsLayout->addWidget(settingsButtons);
+    QObject::connect(settingsButtons, &QDialogButtonBox::accepted, &settingsDialog, &QDialog::accept);
+    QObject::connect(settingsButtons, &QDialogButtonBox::rejected, &settingsDialog, &QDialog::reject);
+    if (settingsDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
     const QString outputPath = QFileDialog::getSaveFileName(
         this, "Save converted PDF as", "converted_images.pdf", "PDF Files (*.pdf);;All Files (*)");
 
@@ -440,7 +494,13 @@ void MainWindow::onConvertImagesToPdf() {
 
     setStatus("Converting images to PDF...");
     QString conversionMessage;
-    const bool success = exportImagesToPdf(imageFiles, outputPath, conversionMessage);
+    const auto placementMode = static_cast<ImagePlacementMode>(placementCombo->currentData().toInt());
+    const bool success = exportImagesToPdf(
+        imageFiles,
+        outputPath,
+        orientationCombo->currentData().toBool(),
+        placementMode,
+        conversionMessage);
     if (!success) {
         QMessageBox::critical(this, "Conversion Failed", conversionMessage);
         setStatus("Image conversion failed.");

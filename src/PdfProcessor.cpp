@@ -24,12 +24,13 @@ bool PdfProcessor::validateFiles(const std::vector<std::string>& filePaths, std:
             return false;
         }
 
-        if (!fs::exists(filePath)) {
+        const fs::path path = fs::u8path(filePath);
+        if (!fs::exists(path)) {
             errorMessage = "File not found: " + filePath;
             return false;
         }
 
-        if (!fs::is_regular_file(filePath)) {
+        if (!fs::is_regular_file(path)) {
             errorMessage = "Path is not a file: " + filePath;
             return false;
         }
@@ -57,7 +58,7 @@ bool PdfProcessor::mergeFiles(const std::vector<std::string>& filePaths,
         return false;
     }
 
-    const fs::path outputDir = fs::path(outputPath).parent_path();
+    const fs::path outputDir = fs::u8path(outputPath).parent_path();
     if (!outputDir.empty() && !fs::exists(outputDir)) {
         std::cerr << "Output directory does not exist: " << outputDir << '\n';
         return false;
@@ -80,7 +81,7 @@ bool PdfProcessor::mergeFiles(const std::vector<std::string>& filePaths,
             }
 
             if (progressCallback) {
-                progressCallback(i + 1, totalFiles, fs::path(filePath).filename().string());
+                progressCallback(i + 1, totalFiles, fs::u8path(filePath).filename().u8string());
             }
         }
 
@@ -109,7 +110,8 @@ bool PdfProcessor::splitFile(const std::string& filePath,
                              const std::string& outputDirectory,
                              const std::string& baseName,
                              const SplitProgressCallback& progressCallback) {
-    if (pageRanges.empty() || !fs::exists(outputDirectory)) {
+    const fs::path outputDir = fs::u8path(outputDirectory);
+    if (pageRanges.empty() || !fs::exists(outputDir)) {
         return false;
     }
 
@@ -137,15 +139,16 @@ bool PdfProcessor::splitFile(const std::string& filePath,
                     std::to_string(lastPage + 1);
             }
 
-            fs::path outputPath = fs::path(outputDirectory) / (partStem + ".pdf");
+            fs::path outputPath = outputDir / fs::u8path(partStem + ".pdf");
             size_t collisionIndex = 2;
             while (fs::exists(outputPath)) {
-                outputPath = fs::path(outputDirectory) /
-                    (partStem + "_" + std::to_string(collisionIndex++) + ".pdf");
+                outputPath = outputDir / fs::u8path(
+                    partStem + "_" + std::to_string(collisionIndex++) + ".pdf");
             }
 
-            const std::string partName = outputPath.filename().string();
-            QPDFWriter writer(partPdf, outputPath.string().c_str());
+            const std::string partName = outputPath.filename().u8string();
+            const std::string outputPathUtf8 = outputPath.u8string();
+            QPDFWriter writer(partPdf, outputPathUtf8.c_str());
             writer.write();
 
             if (progressCallback) {
@@ -161,14 +164,14 @@ bool PdfProcessor::splitFile(const std::string& filePath,
 }
 
 bool PdfProcessor::hasPdfExtension(const std::string& path) {
-    std::string ext = fs::path(path).extension().string();
+    std::string ext = fs::u8path(path).extension().u8string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     return ext == ".pdf";
 }
 
 bool PdfProcessor::isPdfSignature(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(fs::u8path(path), std::ios::binary);
     if (!file) {
         return false;
     }
@@ -179,7 +182,7 @@ bool PdfProcessor::isPdfSignature(const std::string& path) {
 }
 
 std::string PdfProcessor::readFileBytes(const std::string& path) {
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(fs::u8path(path), std::ios::binary);
     if (!input) {
         return {};
     }

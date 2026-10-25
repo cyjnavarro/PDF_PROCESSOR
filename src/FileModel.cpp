@@ -10,7 +10,7 @@ namespace fs = std::filesystem;
 // ===== PdfFile Implementation =====
 
 PdfFile::PdfFile(const std::string& path) : path_(path) {
-    filename_ = fs::path(path).filename().string();
+    filename_ = fs::u8path(path).filename().u8string();
 }
 
 bool PdfFile::validate(std::string& errorMessage) const {
@@ -19,12 +19,13 @@ bool PdfFile::validate(std::string& errorMessage) const {
         return false;
     }
 
-    if (!fs::exists(path_)) {
+    const fs::path filePath = fs::u8path(path_);
+    if (!fs::exists(filePath)) {
         errorMessage = "File not found: " + path_;
         return false;
     }
 
-    if (!fs::is_regular_file(path_)) {
+    if (!fs::is_regular_file(filePath)) {
         errorMessage = "Path is not a file: " + path_;
         return false;
     }
@@ -43,14 +44,14 @@ bool PdfFile::validate(std::string& errorMessage) const {
 }
 
 bool PdfFile::hasPdfExtension(const std::string& path) {
-    std::string ext = fs::path(path).extension().string();
+    std::string ext = fs::u8path(path).extension().u8string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     return ext == ".pdf";
 }
 
 bool PdfFile::isPdfSignature(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(fs::u8path(path), std::ios::binary);
     if (!file) {
         return false;
     }
